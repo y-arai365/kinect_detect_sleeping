@@ -3,9 +3,11 @@ from scipy.spatial import distance
 
 
 class MotionDetector:
-    def __init__(self, motion_point=0, sleep_point=0):
+    def __init__(self, motion_point=0, sleep_point=0, frame_number=50):
         self.motion_point = motion_point
         self.sleep_point = sleep_point
+
+        self.array_frames = np.zeros((frame_number, 3), dtype=float)
 
     @staticmethod
     def load(npy_file):
@@ -25,20 +27,23 @@ class MotionDetector:
             self._get_distance_between_two_points(pt1, pt2)
         return self.motion_point
 
-    def get_weighted_moving_average_array(self, arr, weight):
+    def get_weighted_moving_average_array(self, arr, weight):  # arr=(500, 3)
         """50フレームの配列取得と50フレームで加重移動平均を求めることを全フレームで繰り返して配列を取得"""
         xyz = []
-        for i in range(len(arr)):
-            arr_50_frames = self._get_detect_array(arr, i)
-            if len(arr_50_frames) == 50:
-                self._get_weighted_moving_average(arr_50_frames, weight, xyz)
+        for coordinate in arr:
+            self.update_array_50_frames(coordinate)
+            self._get_weighted_moving_average(self.array_frames, weight, xyz)
         return xyz
 
-    def _get_distance_between_two_points(self, pt1, pt2):
+    def update_array_50_frames(self, new_arr):  # new_arr=(3,)
+        """現状のフレームの１番古いものと新たなものを入れ替える"""
+        self.array_frames = np.roll(self.array_frames, -1, axis=0)
+        self.array_frames[-1] = new_arr
+
+    def _get_distance_between_two_points(self, pt1, pt2, distance_thresh=1):
         """2点間の距離を求める(3次元)、移動量が一定以上なら動いていると判定"""  # sleep_pointは後付け
         dist = distance.euclidean(pt1, pt2)
-        # print(dist)
-        if dist > 1:
+        if dist > distance_thresh:
             self.motion_point += 1
             self.sleep_point = 0
         else:
@@ -46,11 +51,6 @@ class MotionDetector:
             if self.sleep_point > 30:
                 # print("sleep_alarm=========="*10)
                 pass
-
-    @staticmethod
-    def _get_detect_array(arr, frame_point, frame_num=50):
-        """全フレームのうち、判定に使う直前50フレーム(仮)分の配列を新たに取得"""
-        return arr[max(0, frame_point-frame_num):frame_point]
 
     @staticmethod
     def _get_weighted_moving_average(arr, weight, xyz):
